@@ -2,19 +2,30 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Broccoli Buster 3D - Shell Shockers Style FPS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Broccoli Buster 3D</title>
     
-    <!-- Core 3D Engine Dependencies -->
+    <!-- 3D Engines & Virtual Joystick -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
 
     <style>
+        :root {
+            --primary: #51cf66;
+            --primary-dark: #2f9e44;
+            --danger: #ff6b6b;
+            --bg-glass: rgba(10, 20, 10, 0.75);
+            --border-glass: rgba(81, 207, 102, 0.3);
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
             user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
         }
 
         body, html {
@@ -22,17 +33,17 @@
             height: 100%;
             overflow: hidden;
             background-color: #050b05;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
             color: #fff;
         }
 
-        #game-viewport {
+        #game-canvas {
             width: 100vw;
             height: 100vh;
             display: block;
         }
 
-        /* --- UI OVERLAYS --- */
+        /* HUD OVERLAY */
         .hud-layer {
             position: absolute;
             top: 0;
@@ -41,192 +52,267 @@
             height: 100%;
             pointer-events: none;
             z-index: 5;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
 
-        /* Crosshair */
         #crosshair {
             position: absolute;
             top: 50%;
             left: 50%;
-            width: 12px;
-            height: 12px;
+            width: 18px;
+            height: 18px;
             transform: translate(-50%, -50%);
         }
 
         #crosshair::before, #crosshair::after {
             content: '';
             position: absolute;
-            background: #51cf66;
-            box-shadow: 0 0 6px rgba(81,207,102,0.8);
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+            border-radius: 1px;
         }
 
-        #crosshair::before { top: 5px; left: 0; width: 12px; height: 2px; }
-        #crosshair::after { top: 0; left: 5px; width: 2px; height: 12px; }
+        #crosshair::before { top: 8px; left: 0; width: 18px; height: 2px; }
+        #crosshair::after { top: 0; left: 8px; width: 2px; height: 18px; }
 
-        /* Stats HUD */
-        .hud-panel {
+        .hud-card {
             position: absolute;
             bottom: 30px;
-            padding: 15px 25px;
-            background: rgba(0, 0, 0, 0.65);
-            border: 2px solid #2f9e44;
-            border-radius: 10px;
-            backdrop-filter: blur(8px);
+            padding: 14px 22px;
+            background: var(--bg-glass);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
         }
 
         #health-card { left: 30px; }
         #weapon-card { right: 30px; text-align: right; }
 
-        .hud-label {
-            font-size: 0.85rem;
+        .hud-title {
+            font-size: 0.7rem;
             color: #a9e34b;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 2px;
+            font-weight: 800;
         }
 
         .hud-value {
-            font-size: 2.5rem;
+            font-size: 2.2rem;
             font-weight: 900;
-            color: #fff;
+            line-height: 1.1;
+            margin-top: 2px;
         }
 
-        /* Start / Pause Screen */
-        #blocker {
+        /* iPad / Mobile Controls Overlay */
+        #touch-controls {
             position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            background-color: rgba(5, 11, 5, 0.85);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 10;
+            z-index: 6;
+            pointer-events: none;
+            display: none;
+        }
+
+        .is-touch #touch-controls { display: block; }
+
+        #joystick-zone {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            width: 160px;
+            height: 160px;
             pointer-events: auto;
         }
 
-        .menu-card {
+        .action-btn {
+            position: absolute;
+            pointer-events: auto;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+
+        .action-btn:active { transform: scale(0.92); }
+
+        #btn-fire {
+            right: 40px;
+            bottom: 40px;
+            width: 86px;
+            height: 86px;
+            background: rgba(230, 73, 73, 0.4);
+            border: 2px solid var(--danger);
+            color: #fff;
+            font-size: 1.1rem;
+        }
+
+        #btn-swap {
+            right: 45px;
+            bottom: 145px;
+            width: 64px;
+            height: 64px;
+            background: rgba(47, 158, 68, 0.4);
+            border: 2px solid var(--primary);
+            color: #fff;
+            font-size: 0.8rem;
+        }
+
+        /* START MENU */
+        #menu-overlay {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 11, 5, 0.92);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+        }
+
+        .menu-modal {
             text-align: center;
             background: #0d170c;
-            border: 2px solid #51cf66;
-            padding: 40px 60px;
-            border-radius: 16px;
-            box-shadow: 0 0 40px rgba(81,207,102,0.2);
+            border: 1px solid var(--border-glass);
+            padding: 40px;
+            border-radius: 24px;
+            max-width: 440px;
+            width: 88%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
         }
 
-        h1 { font-size: 3.5rem; color: #51cf66; text-transform: uppercase; margin-bottom: 10px; }
-        p { color: #d8f5a2; font-size: 1.2rem; margin-bottom: 25px; }
+        h1 { font-size: 2.8rem; color: var(--primary); text-transform: uppercase; margin-bottom: 6px; letter-spacing: 2px; }
+        p { color: #d8f5a2; font-size: 1rem; margin-bottom: 28px; opacity: 0.85; line-height: 1.4; }
 
-        .btn {
-            background: #2f9e44;
+        .start-btn {
+            background: var(--primary-dark);
             color: #fff;
             border: none;
-            padding: 16px 36px;
-            font-size: 1.3rem;
-            font-weight: bold;
-            border-radius: 8px;
+            width: 100%;
+            padding: 18px;
+            font-size: 1.2rem;
+            font-weight: 800;
+            border-radius: 14px;
             cursor: pointer;
             text-transform: uppercase;
-            transition: all 0.2s;
+            letter-spacing: 1.5px;
+            box-shadow: 0 4px 15px rgba(47, 158, 68, 0.4);
         }
-
-        .btn:hover { background: #37b24d; transform: scale(1.05); }
     </style>
 </head>
 <body>
 
-    <div id="blocker">
-        <div class="menu-card">
-            <h1>Broccoli Buster 3D</h1>
-            <p>Click to Lock Mouse & Engage in Battle</p>
-            <p style="font-size: 0.9rem; color: #888;">Controls: WASD = Move | Left Click = Fire | 1/2 = Switch Weapon</p>
-            <button class="btn" id="play-btn">DEPLOY ARENA</button>
+    <div id="menu-overlay">
+        <div class="menu-modal">
+            <h1>Broccoli Buster</h1>
+            <p id="menu-desc">Tap below to enter the 3D Arena</p>
+            <button class="start-btn" id="start-btn">PLAY NOW</button>
         </div>
     </div>
 
     <div class="hud-layer">
         <div id="crosshair"></div>
-        <div class="hud-panel" id="health-card">
-            <div class="hud-label">HP</div>
-            <div class="hud-value" id="hp-val">100</div>
+        <div class="hud-card" id="health-card">
+            <div class="hud-title">Health</div>
+            <div class="hud-value" id="hp-display">100</div>
         </div>
-        <div class="hud-panel" id="weapon-card">
-            <div class="hud-label" id="weapon-name">Rifle</div>
-            <div class="hud-value" id="ammo-val">∞</div>
+        <div class="hud-card" id="weapon-card">
+            <div class="hud-title" id="weapon-label">Rifle</div>
+            <div class="hud-value">∞</div>
         </div>
     </div>
 
-    <canvas id="game-viewport"></canvas>
+    <div id="touch-controls">
+        <div id="joystick-zone"></div>
+        <div class="action-btn" id="btn-fire">FIRE</div>
+        <div class="action-btn" id="btn-swap">SWAP</div>
+    </div>
 
-    <!-- Project External Modules (Multi-file Architecture) -->
-    <script type="module">
-        import { ModuleRegistry } from './src/modules/index.js';
-        
-        // Load System Modules
-        console.log(`Loaded ${ModuleRegistry.length} subsystem modules.`);
-    </script>
+    <canvas id="game-canvas"></canvas>
 
-    <!-- Core 3D FPS Game Loop Script -->
     <script>
-        /* --- 1. GAME STATE & CONSTANTS --- */
+        /* --- ENGINE STATE --- */
         let scene, camera, renderer, world;
-        let pBody, controls = { fwd: false, bwd: false, lft: false, rgt: false };
-        let activeWeapon = 'rifle'; // 'rifle' or 'rpg'
-        let projectiles = [];
-        let isLocked = false;
+        let pBody, pHealth = 100;
+        let moveInput = { fwd: 0, rgt: 0 };
+        let activeWeapon = 'rifle'; // 'rifle' | 'rpg'
+        let projectiles = [], bots = [];
+        let isPlaying = false, isTouch = false;
 
-        const canvas = document.getElementById('game-viewport');
-        const blocker = document.getElementById('blocker');
-        const playBtn = document.getElementById('play-btn');
+        // Touch aiming variables
+        let aimTouchId = null;
+        let lastTouchX = 0, lastTouchY = 0;
 
-        /* --- 2. INITIALIZATION --- */
+        const canvas = document.getElementById('game-canvas');
+        const menuOverlay = document.getElementById('menu-overlay');
+        const startBtn = document.getElementById('start-btn');
+
+        function checkTouchDevice() {
+            isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            if (isTouch) {
+                document.body.classList.add('is-touch');
+                document.getElementById('menu-desc').innerText = "Left Thumb = Move | Right Thumb = Aim | Tap Fire to Shoot";
+            } else {
+                document.getElementById('menu-desc').innerText = "WASD = Move | Mouse = Aim & Shoot | 1/2 = Switch Weapons";
+            }
+        }
+
         function init() {
-            // Three.js Scene Setup
+            checkTouchDevice();
+
+            // 1. Three.js Scene Setup
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0a140a);
             scene.fog = new THREE.FogExp2(0x0a140a, 0.015);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             
-            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.shadowMap.enabled = true;
 
-            // Cannon.js Physics Engine Setup
+            // 2. Physics World Setup
             world = new CANNON.World();
             world.gravity.set(0, -20, 0);
 
             // Lighting
-            const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-            scene.add(ambient);
-
+            scene.add(new THREE.AmbientLight(0xffffff, 0.5));
             const sun = new THREE.DirectionalLight(0xffffff, 0.8);
-            sun.position.set(50, 100, 50);
+            sun.position.set(30, 60, 30);
             sun.castShadow = true;
             scene.add(sun);
 
-            // Build Shell-Shockers Style Arena Environment
             buildArena();
 
-            // Setup Physics Player
-            const sphereShape = new CANNON.Sphere(1.2);
-            pBody = new CANNON.Body({ mass: 70, shape: sphereShape });
+            // Player Physics Body
+            pBody = new CANNON.Body({ mass: 70, shape: new CANNON.Sphere(1.2) });
             pBody.position.set(0, 5, 0);
-            pBody.linearDamping = 0.9;
+            pBody.linearDamping = 0.85;
             world.addBody(pBody);
 
-            // Bind Event Listeners
-            setupControls();
-            window.addEventListener('resize', onWindowResize);
+            // Spawn AI Bots
+            spawnBot(-15, 3, -20);
+            spawnBot(15, 3, -20);
 
-            // Start Loop
+            setupControls();
+            window.addEventListener('resize', onResize);
+
             animate();
         }
 
-        /* --- 3. ARENA CREATION --- */
         function buildArena() {
-            // Ground Floor
-            const groundGeo = new THREE.PlaneGeometry(100, 100);
-            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1e331e, roughness: 0.8 });
+            // Ground
+            const groundGeo = new THREE.PlaneGeometry(120, 120);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x182c18, roughness: 0.8 });
             const ground = new THREE.Mesh(groundGeo, groundMat);
             ground.rotation.x = -Math.PI / 2;
             ground.receiveShadow = true;
@@ -236,44 +322,66 @@
             groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
             world.addBody(groundBody);
 
-            // Spawn Obstacles & Platforms
-            createBox(0, 2, -15, 6, 4, 6, 0x2b4c2b);
-            createBox(-12, 3, -10, 8, 6, 8, 0x3d6b3d);
-            createBox(12, 3, -10, 8, 6, 8, 0x3d6b3d);
+            // Cover Obstacles
+            createObstacle(0, 2, -15, 8, 4, 3, 0x2f9e44);
+            createObstacle(-15, 3, -10, 6, 6, 6, 0x2b4c2b);
+            createObstacle(15, 3, -10, 6, 6, 6, 0x2b4c2b);
         }
 
-        function createBox(x, y, z, w, h, d, color) {
+        function createObstacle(x, y, z, w, h, d, color) {
             const mesh = new THREE.Mesh(
                 new THREE.BoxGeometry(w, h, d),
-                new THREE.MeshStandardMaterial({ color: color })
+                new THREE.MeshStandardMaterial({ color: color, roughness: 0.6 })
             );
             mesh.position.set(x, y, z);
             mesh.castShadow = true;
             mesh.receiveShadow = true;
             scene.add(mesh);
 
-            const body = new CANNON.Body({
-                mass: 0,
-                shape: new CANNON.Box(new CANNON.Vec3(w/2, h/2, d/2))
-            });
+            const body = new CANNON.Body({ mass: 0, shape: new CANNON.Box(new CANNON.Vec3(w/2, h/2, d/2)) });
             body.position.set(x, y, z);
             world.addBody(body);
         }
 
-        /* --- 4. WEAPONS & SHOOTING SYSTEM --- */
-        function fireWeapon() {
-            if (!isLocked) return;
+        /* --- AI BOTS --- */
+        function spawnBot(x, y, z) {
+            const botGroup = new THREE.Group();
+            
+            // Egg/Sphere Body
+            const bodyMesh = new THREE.Mesh(
+                new THREE.SphereGeometry(1.2, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0xffa826 })
+            );
+            bodyMesh.castShadow = true;
+            botGroup.add(bodyMesh);
 
-            const dir = new THREE.Vector3();
-            camera.getWorldDirection(dir);
+            botGroup.position.set(x, y, z);
+            scene.add(botGroup);
 
-            if (activeWeapon === 'rifle') {
-                // RIFLE: Fast Green Plasma Bullets
-                const bulletGeo = new THREE.SphereGeometry(0.15, 8, 8);
-                const bulletMat = new THREE.MeshBasicMaterial({ color: 0x51cf66 });
-                const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+            const body = new CANNON.Body({ mass: 50, shape: new CANNON.Sphere(1.2) });
+            body.position.set(x, y, z);
+            body.linearDamping = 0.8;
+            world.addBody(body);
 
-                bullet.position.copy(camera.position).add(dir.clone().multiplyScalar(1.5));
+            bots.push({ mesh: botGroup, body: body, hp: 100, lastShoot: 0 });
+        }
+
+        /* --- WEAPONS SYSTEM --- */
+        function fireWeapon(isPlayer = true, origin = null, direction = null) {
+            if (isPlayer && !isPlaying) return;
+
+            const dir = direction || new THREE.Vector3();
+            if (isPlayer) camera.getWorldDirection(dir);
+
+            const startPos = origin || camera.position.clone().add(dir.clone().multiplyScalar(1.5));
+
+            if (activeWeapon === 'rifle' || !isPlayer) {
+                // Green Rifle Bullet
+                const bullet = new THREE.Mesh(
+                    new THREE.SphereGeometry(0.15, 8, 8),
+                    new THREE.MeshBasicMaterial({ color: isPlayer ? 0x51cf66 : 0xff4444 })
+                );
+                bullet.position.copy(startPos);
                 scene.add(bullet);
 
                 const body = new CANNON.Body({ mass: 0.1, shape: new CANNON.Sphere(0.15) });
@@ -281,134 +389,221 @@
                 body.velocity.copy(dir.multiplyScalar(80));
                 world.addBody(body);
 
-                projectiles.push({ mesh: bullet, body: body, type: 'bullet', ttl: 120 });
-
-            } else if (activeWeapon === 'rpg') {
-                // RPG: Launch Spinning 3D Broccoli Rocket
-                const broccoliGroup = new THREE.Group();
-                
-                // Broccoli Stem
+                projectiles.push({ mesh: bullet, body: body, isPlayer, type: 'bullet', ttl: 90 });
+            } else {
+                // Broccoli RPG
+                const broccoli = new THREE.Group();
                 const stem = new THREE.Mesh(
-                    new THREE.CylinderGeometry(0.1, 0.15, 0.6),
+                    new THREE.CylinderGeometry(0.08, 0.12, 0.5),
                     new THREE.MeshStandardMaterial({ color: 0x8ce99a })
                 );
                 stem.position.y = -0.2;
-                broccoliGroup.add(stem);
+                broccoli.add(stem);
 
-                // Broccoli Floret Head
-                const floret = new THREE.Mesh(
-                    new THREE.DodecahedronGeometry(0.4),
-                    new THREE.MeshStandardMaterial({ color: 0x2f9e44, roughness: 0.9 })
+                const head = new THREE.Mesh(
+                    new THREE.DodecahedronGeometry(0.35),
+                    new THREE.MeshStandardMaterial({ color: 0x2f9e44 })
                 );
-                floret.position.y = 0.2;
-                broccoliGroup.add(floret);
+                head.position.y = 0.15;
+                broccoli.add(head);
 
-                broccoliGroup.position.copy(camera.position).add(dir.clone().multiplyScalar(2));
-                scene.add(broccoliGroup);
+                broccoli.position.copy(startPos);
+                scene.add(broccoli);
 
-                const body = new CANNON.Body({ mass: 1.0, shape: new CANNON.Sphere(0.4) });
-                body.position.copy(broccoliGroup.position);
+                const body = new CANNON.Body({ mass: 1.0, shape: new CANNON.Sphere(0.35) });
+                body.position.copy(broccoli.position);
                 body.velocity.copy(dir.multiplyScalar(35));
                 world.addBody(body);
 
-                projectiles.push({ mesh: broccoliGroup, body: body, type: 'rpg', ttl: 200 });
+                projectiles.push({ mesh: broccoli, body: body, isPlayer: true, type: 'rpg', ttl: 150 });
             }
         }
 
-        /* --- 5. CONTROLS & MOUSE LOOK --- */
+        function switchWeapon() {
+            activeWeapon = (activeWeapon === 'rifle') ? 'rpg' : 'rifle';
+            document.getElementById('weapon-label').innerText = (activeWeapon === 'rifle') ? 'Rifle' : 'Broccoli RPG';
+        }
+
+        /* --- CONTROLS --- */
         function setupControls() {
-            playBtn.addEventListener('click', () => { canvas.requestPointerLock(); });
-
-            document.addEventListener('pointerlockchange', () => {
-                isLocked = (document.pointerLockElement === canvas);
-                blocker.style.display = isLocked ? 'none' : 'flex';
+            startBtn.addEventListener('click', () => {
+                menuOverlay.style.display = 'none';
+                isPlaying = true;
+                if (!isTouch) canvas.requestPointerLock();
             });
 
-            document.addEventListener('mousemove', (e) => {
-                if (!isLocked) return;
-                
-                // Yaw (Y-axis rotation)
-                pBody.quaternion.mult(
-                    new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -e.movementX * 0.002),
-                    pBody.quaternion
-                );
+            if (isTouch) {
+                // Virtual Joystick for movement
+                nipplejs.create({
+                    zone: document.getElementById('joystick-zone'),
+                    mode: 'static',
+                    position: { left: '80px', bottom: '80px' },
+                    color: '#51cf66'
+                }).on('move', (e, data) => {
+                    if (data.vector) {
+                        moveInput.fwd = data.vector.y;
+                        moveInput.rgt = data.vector.x;
+                    }
+                }).on('end', () => {
+                    moveInput.fwd = 0; moveInput.rgt = 0;
+                });
 
-                // Pitch (X-axis camera tilt)
-                camera.rotation.x -= e.movementY * 0.002;
-                camera.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, camera.rotation.x));
-            });
+                // Touch swipe aiming
+                window.addEventListener('touchstart', (e) => {
+                    if (!isPlaying) return;
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const t = e.changedTouches[i];
+                        if (t.clientX > window.innerWidth / 2 && aimTouchId === null) {
+                            aimTouchId = t.identifier;
+                            lastTouchX = t.clientX;
+                            lastTouchY = t.clientY;
+                        }
+                    }
+                });
 
-            window.addEventListener('keydown', (e) => {
-                if (e.code === 'KeyW') controls.fwd = true;
-                if (e.code === 'KeyS') controls.bwd = true;
-                if (e.code === 'KeyA') controls.lft = true;
-                if (e.code === 'KeyD') controls.rgt = true;
+                window.addEventListener('touchmove', (e) => {
+                    if (!isPlaying) return;
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const t = e.changedTouches[i];
+                        if (t.identifier === aimTouchId) {
+                            const dx = t.clientX - lastTouchX;
+                            const dy = t.clientY - lastTouchY;
 
-                // Weapon Switch
-                if (e.code === 'Digit1') switchWeapon('rifle');
-                if (e.code === 'Digit2') switchWeapon('rpg');
-            });
+                            pBody.quaternion.mult(
+                                new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -dx * 0.005),
+                                pBody.quaternion
+                            );
 
-            window.addEventListener('keyup', (e) => {
-                if (e.code === 'KeyW') controls.fwd = false;
-                if (e.code === 'KeyS') controls.bwd = false;
-                if (e.code === 'KeyA') controls.lft = false;
-                if (e.code === 'KeyD') controls.rgt = false;
-            });
+                            camera.rotation.x -= dy * 0.005;
+                            camera.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, camera.rotation.x));
 
-            window.addEventListener('mousedown', (e) => {
-                if (e.button === 0) fireWeapon();
-            });
+                            lastTouchX = t.clientX;
+                            lastTouchY = t.clientY;
+                        }
+                    }
+                });
+
+                const clearTouch = (e) => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === aimTouchId) aimTouchId = null;
+                    }
+                };
+                window.addEventListener('touchend', clearTouch);
+                window.addEventListener('touchcancel', clearTouch);
+
+                document.getElementById('btn-fire').addEventListener('touchstart', (e) => { e.preventDefault(); fireWeapon(true); });
+                document.getElementById('btn-swap').addEventListener('touchstart', (e) => { e.preventDefault(); switchWeapon(); });
+
+            } else {
+                // Desktop Mouse & Keyboard
+                document.addEventListener('mousemove', (e) => {
+                    if (!isPlaying || document.pointerLockElement !== canvas) return;
+                    pBody.quaternion.mult(
+                        new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -e.movementX * 0.0025),
+                        pBody.quaternion
+                    );
+                    camera.rotation.x -= e.movementY * 0.0025;
+                    camera.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, camera.rotation.x));
+                });
+
+                let keys = {};
+                window.addEventListener('keydown', (e) => {
+                    keys[e.code] = true;
+                    moveInput.fwd = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
+                    moveInput.rgt = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
+                    if (e.code === 'Digit1') { activeWeapon = 'rifle'; document.getElementById('weapon-label').innerText = 'Rifle'; }
+                    if (e.code === 'Digit2') { activeWeapon = 'rpg'; document.getElementById('weapon-label').innerText = 'Broccoli RPG'; }
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    keys[e.code] = false;
+                    moveInput.fwd = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
+                    moveInput.rgt = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
+                });
+
+                window.addEventListener('mousedown', (e) => {
+                    if (e.button === 0 && isPlaying) fireWeapon(true);
+                });
+            }
         }
 
-        function switchWeapon(type) {
-            activeWeapon = type;
-            document.getElementById('weapon-name').innerText = (type === 'rifle') ? 'Rifle' : 'RPG Launcher';
-        }
-
-        function onWindowResize() {
+        function onResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        /* --- 6. MAIN ENGINE LOOP --- */
-        function animate() {
+        /* --- ENGINE LOOP --- */
+        function animate(time) {
             requestAnimationFrame(animate);
 
-            // Step Physics
             world.step(1 / 60);
 
-            if (isLocked) {
-                // Calculate Movement Vectors relative to player rotation
+            if (isPlaying) {
+                // Player physics movement
                 const moveSpeed = 12;
                 const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
-                
-                let moveX = 0, moveZ = 0;
-                if (controls.fwd) moveZ -= 1;
-                if (controls.bwd) moveZ += 1;
-                if (controls.lft) moveX -= 1;
-                if (controls.rgt) moveX += 1;
+                const moveVec = new THREE.Vector3(moveInput.rgt, 0, -moveInput.fwd).normalize();
+                moveVec.applyAxisAngle(new THREE.Vector3(0, 1, 0), euler.y);
 
-                const moveVector = new THREE.Vector3(moveX, 0, moveZ).normalize();
-                moveVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), euler.y);
-
-                pBody.velocity.x = moveVector.x * moveSpeed;
-                pBody.velocity.z = moveVector.z * moveSpeed;
+                pBody.velocity.x = moveVec.x * moveSpeed;
+                pBody.velocity.z = moveVec.z * moveSpeed;
             }
 
-            // Sync Camera Position to Physics Body
             camera.position.copy(pBody.position);
-            camera.position.y += 1.2; // Eye level
+            camera.position.y += 1.2;
 
-            // Update Projectiles
+            // AI Bot Behavior
+            bots.forEach(bot => {
+                bot.mesh.position.copy(bot.body.position);
+
+                // AI tracking logic
+                const dist = bot.body.position.distanceTo(pBody.position);
+                if (dist < 25 && isPlaying) {
+                    const dir = new CANNON.Vec3();
+                    pBody.position.vsub(bot.body.position, dir);
+                    dir.y = 0;
+                    dir.normalize();
+
+                    bot.body.velocity.x = dir.x * 6;
+                    bot.body.velocity.z = dir.z * 6;
+
+                    // AI Firing Logic
+                    if (Date.now() - bot.lastShoot > 1800) {
+                        bot.lastShoot = Date.now();
+                        const shootDir = new THREE.Vector3(dir.x, 0.1, dir.z).normalize();
+                        fireWeapon(false, bot.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), shootDir);
+                    }
+                }
+            });
+
+            // Projectile Updates & Collision Check
             for (let i = projectiles.length - 1; i >= 0; i--) {
                 const p = projectiles[i];
                 p.mesh.position.copy(p.body.position);
-                p.mesh.quaternion.copy(p.body.quaternion);
 
-                if (p.type === 'rpg') {
-                    p.mesh.rotation.y += 0.1; // Spin RPG Broccoli in flight
+                if (p.type === 'rpg') p.mesh.rotation.y += 0.15;
+
+                // Hit Detection with Player
+                if (!p.isPlayer && p.body.position.distanceTo(pBody.position) < 1.5) {
+                    pHealth = Math.max(0, pHealth - 10);
+                    document.getElementById('hp-display').innerText = pHealth;
+                    p.ttl = 0;
+                }
+
+                // Hit Detection with Bots
+                if (p.isPlayer) {
+                    bots.forEach(bot => {
+                        if (p.body.position.distanceTo(bot.body.position) < 1.8) {
+                            bot.hp -= (p.type === 'rpg') ? 60 : 25;
+                            p.ttl = 0;
+                            if (bot.hp <= 0) {
+                                scene.remove(bot.mesh);
+                                world.remove(bot.body);
+                                bots.splice(bots.indexOf(bot), 1);
+                            }
+                        }
+                    });
                 }
 
                 p.ttl--;
