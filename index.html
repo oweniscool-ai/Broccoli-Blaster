@@ -617,7 +617,32 @@
             renderer.render(scene, camera);
         }
 
-        window.onload = init;
+        window.onload = init;<script type="module">
+    import { AudioSystem, WeaponSystem, BotManager, UIManager } from './src/modules/index.js';
+
+    // Initialize modules with scene & world
+    const weapons = new WeaponSystem(scene, world);
+    const botEngine = new BotManager(scene, world, weapons);
+    const ui = new UIManager(
+        () => weapons.fire(activeWeapon, true, camera.position, getCameraDirection()),
+        () => switchWeapon()
+    );
+
+    ui.init();
+    botEngine.spawnBot(-15, 3, -20);
+    botEngine.spawnBot(15, 3, -20);
+
+    // In your animate loop:
+    function animate() {
+        requestAnimationFrame(animate);
+        world.step(1 / 60);
+
+        weapons.update();
+        botEngine.update(pBody.position, isPlaying);
+
+        renderer.render(scene, camera);
+    }
+</script
     </script>
 </body>
 </html>
