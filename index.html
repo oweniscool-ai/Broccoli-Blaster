@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Broccoli Buster 3D - Shell Shockers Style FPS</title>
+    
+    <!-- Core 3D Engine Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050b05;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+
+        #game-viewport {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        /* --- UI OVERLAYS --- */
+        .hud-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        /* Crosshair */
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 12px;
+            height: 12px;
+            transform: translate(-50%, -50%);
+        }
+
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: #51cf66;
+            box-shadow: 0 0 6px rgba(81,207,102,0.8);
+        }
+
+        #crosshair::before { top: 5px; left: 0; width: 12px; height: 2px; }
+        #crosshair::after { top: 0; left: 5px; width: 2px; height: 12px; }
+
+        /* Stats HUD */
+        .hud-panel {
+            position: absolute;
+            bottom: 30px;
+            padding: 15px 25px;
+            background: rgba(0, 0, 0, 0.65);
+            border: 2px solid #2f9e44;
+            border-radius: 10px;
+            backdrop-filter: blur(8px);
+        }
+
+        #health-card { left: 30px; }
+        #weapon-card { right: 30px; text-align: right; }
+
+        .hud-label {
+            font-size: 0.85rem;
+            color: #a9e34b;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .hud-value {
+            font-size: 2.5rem;
+            font-weight: 900;
+            color: #fff;
+        }
+
+        /* Start / Pause Screen */
+        #blocker {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(5, 11, 5, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+            pointer-events: auto;
+        }
+
+        .menu-card {
+            text-align: center;
+            background: #0d170c;
+            border: 2px solid #51cf66;
+            padding: 40px 60px;
+            border-radius: 16px;
+            box-shadow: 0 0 40px rgba(81,207,102,0.2);
+        }
+
+        h1 { font-size: 3.5rem; color: #51cf66; text-transform: uppercase; margin-bottom: 10px; }
+        p { color: #d8f5a2; font-size: 1.2rem; margin-bottom: 25px; }
+
+        .btn {
+            background: #2f9e44;
+            color: #fff;
+            border: none;
+            padding: 16px 36px;
+            font-size: 1.3rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            text-transform: uppercase;
+            transition: all 0.2s;
+        }
+
+        .btn:hover { background: #37b24d; transform: scale(1.05); }
+    </style>
+</head>
+<body>
+
+    <div id="blocker">
+        <div class="menu-card">
+            <h1>Broccoli Buster 3D</h1>
+            <p>Click to Lock Mouse & Engage in Battle</p>
+            <p style="font-size: 0.9rem; color: #888;">Controls: WASD = Move | Left Click = Fire | 1/2 = Switch Weapon</p>
+            <button class="btn" id="play-btn">DEPLOY ARENA</button>
+        </div>
+    </div>
+
+    <div class="hud-layer">
+        <div id="crosshair"></div>
+        <div class="hud-panel" id="health-card">
+            <div class="hud-label">HP</div>
+            <div class="hud-value" id="hp-val">100</div>
+        </div>
+        <div class="hud-panel" id="weapon-card">
+            <div class="hud-label" id="weapon-name">Rifle</div>
+            <div class="hud-value" id="ammo-val">∞</div>
+        </div>
+    </div>
+
+    <canvas id="game-viewport"></canvas>
+
+    <!-- Project External Modules (Multi-file Architecture) -->
+    <script type="module">
+        import { ModuleRegistry } from './src/modules/index.js';
+        
+        // Load System Modules
+        console.log(`Loaded ${ModuleRegistry.length} subsystem modules.`);
+    </script>
+
+    <!-- Core 3D FPS Game Loop Script -->
+    <script>
+        /* --- 1. GAME STATE & CONSTANTS --- */
+        let scene, camera, renderer, world;
+        let pBody, controls = { fwd: false, bwd: false, lft: false, rgt: false };
+        let activeWeapon = 'rifle'; // 'rifle' or 'rpg'
+        let projectiles = [];
+        let isLocked = false;
+
+        const canvas = document.getElementById('game-viewport');
+        const blocker = document.getElementById('blocker');
+        const playBtn = document.getElementById('play-btn');
+
+        /* --- 2. INITIALIZATION --- */
+        function init() {
+            // Three.js Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a140a);
+            scene.fog = new THREE.FogExp2(0x0a140a, 0.015);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+
+            // Cannon.js Physics Engine Setup
+            world = new CANNON.World();
+            world.gravity.set(0, -20, 0);
+
+            // Lighting
+            const ambient = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambient);
+
+            const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+            sun.position.set(50, 100, 50);
+            sun.castShadow = true;
+            scene.add(sun);
+
+            // Build Shell-Shockers Style Arena Environment
+            buildArena();
+
+            // Setup Physics Player
+            const sphereShape = new CANNON.Sphere(1.2);
+            pBody = new CANNON.Body({ mass: 70, shape: sphereShape });
+            pBody.position.set(0, 5, 0);
+            pBody.linearDamping = 0.9;
+            world.addBody(pBody);
+
+            // Bind Event Listeners
+            setupControls();
+            window.addEventListener('resize', onWindowResize);
+
+            // Start Loop
+            animate();
+        }
+
+        /* --- 3. ARENA CREATION --- */
+        function buildArena() {
+            // Ground Floor
+            const groundGeo = new THREE.PlaneGeometry(100, 100);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x1e331e, roughness: 0.8 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
+            groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+            world.addBody(groundBody);
+
+            // Spawn Obstacles & Platforms
+            createBox(0, 2, -15, 6, 4, 6, 0x2b4c2b);
+            createBox(-12, 3, -10, 8, 6, 8, 0x3d6b3d);
+            createBox(12, 3, -10, 8, 6, 8, 0x3d6b3d);
+        }
+
+        function createBox(x, y, z, w, h, d, color) {
+            const mesh = new THREE.Mesh(
+                new THREE.BoxGeometry(w, h, d),
+                new THREE.MeshStandardMaterial({ color: color })
+            );
+            mesh.position.set(x, y, z);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            scene.add(mesh);
+
+            const body = new CANNON.Body({
+                mass: 0,
+                shape: new CANNON.Box(new CANNON.Vec3(w/2, h/2, d/2))
+            });
+            body.position.set(x, y, z);
+            world.addBody(body);
+        }
+
+        /* --- 4. WEAPONS & SHOOTING SYSTEM --- */
+        function fireWeapon() {
+            if (!isLocked) return;
+
+            const dir = new THREE.Vector3();
+            camera.getWorldDirection(dir);
+
+            if (activeWeapon === 'rifle') {
+                // RIFLE: Fast Green Plasma Bullets
+                const bulletGeo = new THREE.SphereGeometry(0.15, 8, 8);
+                const bulletMat = new THREE.MeshBasicMaterial({ color: 0x51cf66 });
+                const bullet = new THREE.Mesh(bulletGeo, bulletMat);
+
+                bullet.position.copy(camera.position).add(dir.clone().multiplyScalar(1.5));
+                scene.add(bullet);
+
+                const body = new CANNON.Body({ mass: 0.1, shape: new CANNON.Sphere(0.15) });
+                body.position.copy(bullet.position);
+                body.velocity.copy(dir.multiplyScalar(80));
+                world.addBody(body);
+
+                projectiles.push({ mesh: bullet, body: body, type: 'bullet', ttl: 120 });
+
+            } else if (activeWeapon === 'rpg') {
+                // RPG: Launch Spinning 3D Broccoli Rocket
+                const broccoliGroup = new THREE.Group();
+                
+                // Broccoli Stem
+                const stem = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.1, 0.15, 0.6),
+                    new THREE.MeshStandardMaterial({ color: 0x8ce99a })
+                );
+                stem.position.y = -0.2;
+                broccoliGroup.add(stem);
+
+                // Broccoli Floret Head
+                const floret = new THREE.Mesh(
+                    new THREE.DodecahedronGeometry(0.4),
+                    new THREE.MeshStandardMaterial({ color: 0x2f9e44, roughness: 0.9 })
+                );
+                floret.position.y = 0.2;
+                broccoliGroup.add(floret);
+
+                broccoliGroup.position.copy(camera.position).add(dir.clone().multiplyScalar(2));
+                scene.add(broccoliGroup);
+
+                const body = new CANNON.Body({ mass: 1.0, shape: new CANNON.Sphere(0.4) });
+                body.position.copy(broccoliGroup.position);
+                body.velocity.copy(dir.multiplyScalar(35));
+                world.addBody(body);
+
+                projectiles.push({ mesh: broccoliGroup, body: body, type: 'rpg', ttl: 200 });
+            }
+        }
+
+        /* --- 5. CONTROLS & MOUSE LOOK --- */
+        function setupControls() {
+            playBtn.addEventListener('click', () => { canvas.requestPointerLock(); });
+
+            document.addEventListener('pointerlockchange', () => {
+                isLocked = (document.pointerLockElement === canvas);
+                blocker.style.display = isLocked ? 'none' : 'flex';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isLocked) return;
+                
+                // Yaw (Y-axis rotation)
+                pBody.quaternion.mult(
+                    new CANNON.Quaternion().setFromAxisAngle(new CANNON.Vec3(0, 1, 0), -e.movementX * 0.002),
+                    pBody.quaternion
+                );
+
+                // Pitch (X-axis camera tilt)
+                camera.rotation.x -= e.movementY * 0.002;
+                camera.rotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, camera.rotation.x));
+            });
+
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'KeyW') controls.fwd = true;
+                if (e.code === 'KeyS') controls.bwd = true;
+                if (e.code === 'KeyA') controls.lft = true;
+                if (e.code === 'KeyD') controls.rgt = true;
+
+                // Weapon Switch
+                if (e.code === 'Digit1') switchWeapon('rifle');
+                if (e.code === 'Digit2') switchWeapon('rpg');
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (e.code === 'KeyW') controls.fwd = false;
+                if (e.code === 'KeyS') controls.bwd = false;
+                if (e.code === 'KeyA') controls.lft = false;
+                if (e.code === 'KeyD') controls.rgt = false;
+            });
+
+            window.addEventListener('mousedown', (e) => {
+                if (e.button === 0) fireWeapon();
+            });
+        }
+
+        function switchWeapon(type) {
+            activeWeapon = type;
+            document.getElementById('weapon-name').innerText = (type === 'rifle') ? 'Rifle' : 'RPG Launcher';
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        /* --- 6. MAIN ENGINE LOOP --- */
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Step Physics
+            world.step(1 / 60);
+
+            if (isLocked) {
+                // Calculate Movement Vectors relative to player rotation
+                const moveSpeed = 12;
+                const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+                
+                let moveX = 0, moveZ = 0;
+                if (controls.fwd) moveZ -= 1;
+                if (controls.bwd) moveZ += 1;
+                if (controls.lft) moveX -= 1;
+                if (controls.rgt) moveX += 1;
+
+                const moveVector = new THREE.Vector3(moveX, 0, moveZ).normalize();
+                moveVector.applyAxisAngle(new THREE.Vector3(0, 1, 0), euler.y);
+
+                pBody.velocity.x = moveVector.x * moveSpeed;
+                pBody.velocity.z = moveVector.z * moveSpeed;
+            }
+
+            // Sync Camera Position to Physics Body
+            camera.position.copy(pBody.position);
+            camera.position.y += 1.2; // Eye level
+
+            // Update Projectiles
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.mesh.position.copy(p.body.position);
+                p.mesh.quaternion.copy(p.body.quaternion);
+
+                if (p.type === 'rpg') {
+                    p.mesh.rotation.y += 0.1; // Spin RPG Broccoli in flight
+                }
+
+                p.ttl--;
+                if (p.ttl <= 0) {
+                    scene.remove(p.mesh);
+                    world.remove(p.body);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
